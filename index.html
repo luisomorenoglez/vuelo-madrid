@@ -53,6 +53,59 @@
     .plane-opt.selected { border-color: #4da3ff; background: rgba(47,124,246,0.3); color: #fff; }
     .plane-opt small { display: block; font-size: 10px; color: #8fa5cc; margin-top: 2px; }
 
+    /* ---------- Botón menú ---------- */
+    #menuBtn {
+      position: absolute; top: 14px; left: 14px; z-index: 12; display: none;
+      background: rgba(8,14,30,0.75); border: 1px solid rgba(120,170,255,0.35);
+      color: #cfe0ff; padding: 8px 16px; border-radius: 20px; font-size: 14px;
+      cursor: pointer; backdrop-filter: blur(6px);
+    }
+    #menuBtn:hover { background: rgba(30,50,100,0.85); }
+
+    /* ---------- Cabina ---------- */
+    #cockpit { position: absolute; inset: 0; z-index: 9; display: none; pointer-events: none; }
+    .pillar {
+      position: absolute; top: 0; width: 110px; height: 65%;
+      background: linear-gradient(90deg, #14161a, #23262c 60%, rgba(35,38,44,0));
+    }
+    .pillar.left { left: 0; transform: skewX(14deg); transform-origin: top left; }
+    .pillar.right { right: 0; transform: skewX(-14deg) scaleX(-1); transform-origin: top right; }
+    #windshieldTop {
+      position: absolute; top: 0; left: 0; right: 0; height: 54px;
+      background: linear-gradient(#101215, rgba(16,18,21,0));
+      border-radius: 0 0 50% 50% / 0 0 100% 100%;
+    }
+    #dash {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 25%;
+      background: linear-gradient(#33373e, #191b1f 40%, #0c0d10);
+      border-top: 5px solid #45494f;
+      display: flex; align-items: center; justify-content: center; gap: 46px;
+      box-shadow: 0 -12px 30px rgba(0,0,0,0.6);
+    }
+    .gauge {
+      width: 96px; height: 96px; border-radius: 50%; position: relative;
+      background: radial-gradient(circle at 50% 40%, #1b1e24, #0a0b0d 75%);
+      border: 4px solid #4c5158; box-shadow: inset 0 0 14px #000;
+      text-align: center;
+    }
+    .gauge .needle {
+      position: absolute; left: 50%; bottom: 50%; width: 3px; height: 38px;
+      margin-left: -1.5px; background: #ff5340; border-radius: 2px;
+      transform-origin: bottom center; box-shadow: 0 0 4px #f00;
+    }
+    .gauge span { position: absolute; bottom: 16px; left: 0; right: 0; font-size: 9px; color: #8b93a1; text-transform: uppercase; letter-spacing: 1px; }
+    .gauge b { position: absolute; bottom: 27px; left: 0; right: 0; font-size: 15px; color: #cfe0ff; font-variant-numeric: tabular-nums; }
+    #yoke {
+      width: 150px; height: 84px; margin-top: 60px;
+      border: 13px solid #202329; border-bottom: none;
+      border-radius: 90px 90px 0 0; position: relative;
+      box-shadow: 0 -3px 8px rgba(0,0,0,0.7);
+    }
+    #yoke::after {
+      content: ''; position: absolute; left: 50%; top: 100%; width: 18px; height: 46px;
+      margin-left: -9px; background: linear-gradient(#26292f, #101114);
+    }
+
     /* ---------- Choque ---------- */
     #crashOverlay {
       position: absolute; inset: 0; z-index: 18; display: none;
@@ -126,7 +179,6 @@
       <p id="keyError"></p>
       <div class="planes">
         <button class="plane-opt selected" id="opt-avioneta" onclick="selectPlane('avioneta')">🛩️ Avioneta<small>equilibrada</small></button>
-        <button class="plane-opt" id="opt-dron" onclick="selectPlane('dron')">🚁 Dron<small>ágil y lento</small></button>
         <button class="plane-opt" id="opt-globo" onclick="selectPlane('globo')">🎈 Globo<small>turismo</small></button>
       </div>
       <input id="apiKey" type="text" placeholder="Pega aquí tu clave (Google Maps o Cesium ion)" autocomplete="off" />
@@ -146,6 +198,18 @@
   <div id="loadingMsg">Cargando Madrid en 3D... ✈️</div>
   <div id="minimapWrap"><div id="minimap"></div><div id="minimapCredit">© OpenStreetMap</div></div>
   <div id="crashOverlay"><h2>💥 ¡Te has estrellado!</h2><p>Volviendo al aire en unos segundos...</p></div>
+  <button id="menuBtn" onclick="location.reload()">🏠 Menú / cambiar vehículo</button>
+
+  <div id="cockpit">
+    <div class="pillar left"></div><div class="pillar right"></div>
+    <div id="windshieldTop"></div>
+    <div id="dash">
+      <div class="gauge"><div class="needle" id="gSpeed"></div><b id="gSpeedVal">0</b><span>km/h</span></div>
+      <div id="yoke"></div>
+      <div class="gauge"><div class="needle" id="gAlt"></div><b id="gAltVal">0</b><span>altitud</span></div>
+      <div class="gauge"><div class="needle" id="gHdg"></div><b id="gHdgVal">0°</b><span>rumbo</span></div>
+    </div>
+  </div>
   <div id="title">Comunidad de Madrid — Simulador de vuelo</div>
 
   <div id="hud">
@@ -190,7 +254,6 @@
     const MODELS = 'https://raw.githubusercontent.com/CesiumGS/cesium/main/Apps/SampleData/models/';
     const AIRCRAFT = {
       avioneta: { uri: MODELS + 'CesiumAir/Cesium_Air.glb',       scale: 1,   cruise: 220, min: 60, max: 900, accel: 150, pitchRate: 0.9, rollRate: 1.4, camDist: 140 },
-      dron:     { uri: MODELS + 'CesiumDrone/CesiumDrone.glb',    scale: 4,   cruise: 100, min: 20, max: 350, accel: 220, pitchRate: 1.8, rollRate: 2.6, camDist: 55 },
       globo:    { uri: MODELS + 'CesiumBalloon/CesiumBalloon.glb', scale: 1,  cruise: 60,  min: 15, max: 140, accel: 50,  pitchRate: 0.5, rollRate: 0.8, camDist: 150 },
     };
     let selectedPlane = 'avioneta';
@@ -202,16 +265,24 @@
     }
 
     // Horas del día (hora local de Madrid en verano = UTC+2)
+    // tint: las fotos de Google vienen con luz de día "horneada", así que
+    // se multiplica su color por este tono para simular la hora
     const TIMES = [
-      { name: 'Mediodía',  iso: '2026-07-03T10:00:00Z' },
-      { name: 'Atardecer', iso: '2026-07-03T19:45:00Z' },
-      { name: 'Noche',     iso: '2026-07-03T22:30:00Z' },
-      { name: 'Amanecer',  iso: '2026-07-03T05:00:00Z' },
+      { name: 'Mediodía',  iso: '2026-07-03T10:00:00Z', tint: null },
+      { name: 'Atardecer', iso: '2026-07-03T19:45:00Z', tint: '#ffc493' },
+      { name: 'Noche',     iso: '2026-07-03T22:30:00Z', tint: '#39456b' },
+      { name: 'Amanecer',  iso: '2026-07-03T05:00:00Z', tint: '#ffd9c2' },
     ];
     let timeIdx = 0;
     function applyTime() {
-      viewer.clock.currentTime = Cesium.JulianDate.fromIso8601(TIMES[timeIdx].iso);
-      document.getElementById('hudTime').textContent = TIMES[timeIdx].name;
+      const t = TIMES[timeIdx];
+      viewer.clock.currentTime = Cesium.JulianDate.fromIso8601(t.iso);
+      if (tileset) {
+        tileset.style = t.tint
+          ? new Cesium.Cesium3DTileStyle({ color: "color('" + t.tint + "')" })
+          : undefined;
+      }
+      document.getElementById('hudTime').textContent = t.name;
     }
     function cycleTime() { timeIdx = (timeIdx + 1) % TIMES.length; applyTime(); }
 
@@ -219,7 +290,6 @@
     let viewMode = 'chase';   // 'chase' (exterior) | 'cockpit' (cabina)
     let crashed = false;
     let graceUntil = 0;       // invulnerable hasta este instante tras aparecer
-    let trailPositions = [];  // estela 3D
     let lastSpawn = { name: 'Madrid', lon: START.lon, lat: START.lat, alt: START.alt };
 
     // Niveles de calidad: sse = detalle de los edificios (menos = mejor),
@@ -251,7 +321,10 @@
       if (PLACES[e.key]) teleport(PLACES[e.key]);
       if (e.key === ' ') { pitch = 0; roll = 0; }
       if (e.key.toLowerCase() === 'q') cycleQuality();
-      if (e.key.toLowerCase() === 'c') viewMode = (viewMode === 'chase') ? 'cockpit' : 'chase';
+      if (e.key.toLowerCase() === 'c') {
+        viewMode = (viewMode === 'chase') ? 'cockpit' : 'chase';
+        document.getElementById('cockpit').style.display = (viewMode === 'cockpit') ? 'block' : 'none';
+      }
       if (e.key.toLowerCase() === 'n' && viewer) cycleTime();
       if (e.key.toLowerCase() === 'r' && !crashed) teleport(lastSpawn);
       if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
@@ -261,7 +334,6 @@
     function teleport(p) {
       lon = p.lon; lat = p.lat; alt = p.alt; pitch = 0; roll = 0;
       lastSpawn = p;
-      trailPositions.length = 0;
       if (miniTrail) miniTrail.setLatLngs([]);
       graceUntil = performance.now() + 2500;
       document.getElementById('hudZone').textContent = p.name || 'Madrid';
@@ -361,23 +433,11 @@
         });
       }
 
-      // Estela 3D luminosa
-      trailPositions = [];
-      viewer.entities.add({
-        polyline: {
-          positions: new Cesium.CallbackProperty(() => trailPositions, false),
-          width: 4,
-          material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.25, color: Cesium.Color.CYAN.withAlpha(0.7),
-          }),
-          arcType: Cesium.ArcType.NONE,
-        },
-      });
-
       document.getElementById('loadingMsg').style.display = 'none';
       document.getElementById('hud').style.display = 'block';
       document.getElementById('controlsBox').style.display = 'block';
       document.getElementById('title').style.display = 'block';
+      document.getElementById('menuBtn').style.display = 'block';
       applyQuality();
       applyTime();
       graceUntil = performance.now() + 2500;
@@ -455,12 +515,6 @@
         const q = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
         plane.orientation = Cesium.Quaternion.multiply(q, MODEL_ORIENT_FIX, new Cesium.Quaternion());
 
-        // Estela 3D (un punto cada pocos frames, máximo ~400)
-        if (frame % 8 === 0) {
-          trailPositions.push(pos);
-          if (trailPositions.length > 400) trailPositions.shift();
-        }
-
         // Cámara: cabina o persecución
         if (viewMode === 'cockpit') {
           plane.show = false;
@@ -491,6 +545,16 @@
           let deg = Math.round(Cesium.Math.toDegrees(heading)) % 360;
           if (deg < 0) deg += 360;
           document.getElementById('hudHdg').textContent = deg;
+
+          // Instrumentos de la cabina
+          if (viewMode === 'cockpit') {
+            document.getElementById('gSpeed').style.transform = 'rotate(' + (-135 + Math.min(speed / AC.max, 1) * 270) + 'deg)';
+            document.getElementById('gSpeedVal').textContent = Math.round(speed);
+            document.getElementById('gAlt').style.transform = 'rotate(' + (-135 + Math.min(alt / 5000, 1) * 270) + 'deg)';
+            document.getElementById('gAltVal').textContent = Math.round(alt);
+            document.getElementById('gHdg').style.transform = 'rotate(' + deg + 'deg)';
+            document.getElementById('gHdgVal').textContent = deg + '°';
+          }
         }
       });
     }

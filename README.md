@@ -25,7 +25,9 @@ Simulador de vuelo en el navegador sobre la Comunidad de Madrid, con edificios 3
 
 ## Extras
 
-- **Tres aeronaves**: avioneta, dron (ágil) y globo (turismo), cada una con su propia física.
+- **Dos aeronaves**: avioneta y globo (turismo), cada una con su propia física.
+- **Vista de cabina** con salpicadero, mandos e instrumentos analógicos (velocímetro, altímetro y brújula).
 - **Minimapa** en tiempo real (arriba a la derecha) con la ruta recorrida.
-- **Estela luminosa** en 3D detrás de la aeronave.
+- **Día/noche**: la ciudad se tiñe con la luz de cada hora (las fotos 3D de Google son diurnas, así que la noche se simula con un tinte).
 - **Colisiones reales**: si chocas contra el suelo o un edificio, te estrellas y reapareces.
+- **Botón Menú** (arriba a la izquierda) para volver a la pantalla de inicio y cambiar de vehículo.
