@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vuelo sobre Madrid ✈️</title>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Cesium.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #0a0f1e; }
+    #cesiumContainer { width: 100%; height: 100%; }
+
+    /* ---------- Pantalla de inicio ---------- */
+    #startScreen {
+      position: absolute; inset: 0; z-index: 20;
+      background: radial-gradient(ellipse at 50% 30%, #16234a 0%, #0a0f1e 70%);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+    }
+    .panel {
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px; padding: 36px 40px; max-width: 520px; width: 90%;
+      backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    .panel h1 { margin: 0 0 6px; font-size: 30px; }
+    .panel p.sub { color: #9fb3d9; margin: 0 0 24px; font-size: 14px; }
+    .panel input {
+      width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35);
+      color: #fff; font-size: 14px; outline: none; margin-bottom: 12px;
+    }
+    .panel input:focus { border-color: #4da3ff; }
+    .btn {
+      display: block; width: 100%; padding: 13px; border: none; border-radius: 10px;
+      font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 10px;
+      transition: transform .1s, filter .15s;
+    }
+    .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-primary { background: linear-gradient(135deg, #2f7cf6, #1a56c9); color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,0.12); color: #cdd9f0; font-size: 14px; }
+    .hint { font-size: 12px; color: #7e93bb; margin-top: 14px; line-height: 1.6; text-align: left; }
+    .hint a { color: #4da3ff; }
+    #keyError { color: #ff7b7b; font-size: 13px; min-height: 18px; margin: 0 0 6px; }
+
+    /* ---------- HUD ---------- */
+    #hud {
+      position: absolute; left: 16px; bottom: 16px; z-index: 10;
+      background: rgba(8,14,30,0.72); border: 1px solid rgba(120,170,255,0.25);
+      border-radius: 12px; padding: 12px 18px; color: #d8e6ff;
+      font-size: 14px; line-height: 1.7; min-width: 210px;
+      backdrop-filter: blur(6px); display: none;
+    }
+    #hud b { color: #7db6ff; font-variant-numeric: tabular-nums; }
+    #controlsBox {
+      position: absolute; right: 16px; bottom: 16px; z-index: 10;
+      background: rgba(8,14,30,0.72); border: 1px solid rgba(120,170,255,0.25);
+      border-radius: 12px; padding: 12px 18px; color: #a9bcd e0;
+      color: #a9bce0; font-size: 12.5px; line-height: 1.8; display: none;
+      backdrop-filter: blur(6px);
+    }
+    #controlsBox kbd {
+      background: #1d2a4a; border: 1px solid #3a4f80; border-radius: 4px;
+      padding: 1px 6px; font-size: 11px; color: #cfe0ff;
+    }
+    #title {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+      color: rgba(255,255,255,0.85); font-size: 15px; font-weight: 600;
+      background: rgba(8,14,30,0.6); padding: 6px 16px; border-radius: 20px; display: none;
+      border: 1px solid rgba(120,170,255,0.2);
+    }
+    #loadingMsg {
+      position: absolute; inset: 0; z-index: 15; display: none;
+      align-items: center; justify-content: center; color: #cfe0ff; font-size: 18px;
+      background: rgba(10,15,30,0.85);
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <div id="startScreen">
+    <div class="panel">
+      <h1>✈️ Vuelo sobre Madrid</h1>
+      <p class="sub">Pilota un avión sobre la Comunidad de Madrid en 3D fotorrealista</p>
+      <p id="keyError"></p>
+      <input id="apiKey" type="text" placeholder="Pega aquí tu clave (Google Maps o Cesium ion)" autocomplete="off" />
+      <button class="btn btn-primary" onclick="startWithKey()">🌍 Volar en 3D fotorrealista</button>
+      <button class="btn btn-secondary" onclick="startDemo()">Probar sin clave (mapa plano)</button>
+      <div class="hint">
+        <b>¿Cómo consigo una clave gratis?</b><br>
+        Opción fácil — <a href="https://ion.cesium.com/signup" target="_blank">Crea cuenta gratis en Cesium ion</a> →
+        entra en <i>Access Tokens</i> → copia el token por defecto (empieza por <i>eyJ...</i>).<br>
+        Opción Google — En <a href="https://console.cloud.google.com/google/maps-apis" target="_blank">Google Cloud</a>
+        activa <i>Map Tiles API</i> y crea una clave (empieza por <i>AIza...</i>).<br>
+        La clave se guarda solo en tu navegador.
+      </div>
+    </div>
+  </div>
+
+  <div id="loadingMsg">Cargando Madrid en 3D... ✈️</div>
+  <div id="title">Comunidad de Madrid — Simulador de vuelo</div>
+
+  <div id="hud">
+    <div>🛩️ Velocidad: <b id="hudSpeed">0</b> km/h</div>
+    <div>⛰️ Altitud: <b id="hudAlt">0</b> m</div>
+    <div>🧭 Rumbo: <b id="hudHdg">0</b>°</div>
+    <div>📍 <b id="hudZone">Madrid</b></div>
+  </div>
+
+  <div id="controlsBox">
+    <b style="color:#cfe0ff">Controles</b><br>
+    <kbd>W</kbd>/<kbd>S</kbd> o <kbd>↑</kbd>/<kbd>↓</kbd> — subir / bajar morro<br>
+    <kbd>A</kbd>/<kbd>D</kbd> o <kbd>←</kbd>/<kbd>→</kbd> — girar<br>
+    <kbd>Shift</kbd> / <kbd>Ctrl</kbd> — acelerar / frenar<br>
+    <kbd>1</kbd>-<kbd>5</kbd> — viajar: Sol, Bernabéu, 4 Torres, Retiro, El Escorial<br>
+    <kbd>Espacio</kbd> — nivelar avión
+  </div>
+
+  <script>
+    // ================== CONFIG ==================
+    const START = { lon: -3.7038, lat: 40.4168, alt: 2200 }; // Puerta del Sol
+    const PLACES = {
+      '1': { name: 'Puerta del Sol',    lon: -3.7038, lat: 40.4168, alt: 1800 },
+      '2': { name: 'Santiago Bernabéu', lon: -3.6884, lat: 40.4531, alt: 1500 },
+      '3': { name: 'Cuatro Torres',     lon: -3.6870, lat: 40.4780, alt: 1600 },
+      '4': { name: 'Parque del Retiro', lon: -3.6844, lat: 40.4153, alt: 1400 },
+      '5': { name: 'El Escorial',       lon: -4.1477, lat: 40.5892, alt: 2200 },
+    };
+    const MIN_AGL = 60;        // altura mínima sobre el suelo (m)
+    const GROUND_FALLBACK = 650; // altitud media de Madrid (m)
+
+    let viewer, plane;
+    // Estado del avión
+    let lon = START.lon, lat = START.lat, alt = START.alt;
+    let heading = Cesium.Math.toRadians(0); // norte
+    let pitch = 0, roll = 0;
+    let speed = 220; // km/h
+    const keys = {};
+
+    document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.key] = true;
+      if (PLACES[e.key]) teleport(PLACES[e.key]);
+      if (e.key === ' ') { pitch = 0; roll = 0; }
+      if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+    });
+    document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
+
+    function teleport(p) {
+      lon = p.lon; lat = p.lat; alt = p.alt; pitch = 0; roll = 0;
+      document.getElementById('hudZone').textContent = p.name;
+    }
+
+    // ================== ARRANQUE ==================
+    const savedKey = localStorage.getItem('vuelo-madrid-key');
+    if (savedKey) document.getElementById('apiKey').value = savedKey;
+
+    function startWithKey() {
+      const key = document.getElementById('apiKey').value.trim();
+      const err = document.getElementById('keyError');
+      if (!key) { err.textContent = 'Pega una clave o usa el modo sin clave.'; return; }
+      localStorage.setItem('vuelo-madrid-key', key);
+      err.textContent = '';
+      launch(key);
+    }
+    function startDemo() { launch(null); }
+
+    async function launch(key) {
+      document.getElementById('startScreen').style.display = 'none';
+      document.getElementById('loadingMsg').style.display = 'flex';
+
+      viewer = new Cesium.Viewer('cesiumContainer', {
+        baseLayer: false,
+        baseLayerPicker: false, geocoder: false, homeButton: false,
+        sceneModePicker: false, navigationHelpButton: false, animation: false,
+        timeline: false, fullscreenButton: false, selectionIndicator: false,
+        infoBox: false, requestRenderMode: false,
+      });
+      viewer.scene.skyAtmosphere.show = true;
+      viewer.scene.globe.depthTestAgainstTerrain = true;
+
+      let photoreal = false;
+      if (key) {
+        try {
+          let tileset;
+          if (key.startsWith('AIza')) {
+            // Clave de Google Maps Platform (Map Tiles API)
+            try {
+              tileset = await Cesium.createGooglePhotorealistic3DTileset({ key });
+            } catch (_) {
+              tileset = await Cesium.createGooglePhotorealistic3DTileset(key);
+            }
+          } else {
+            // Token de Cesium ion → asset de Google Photorealistic 3D Tiles
+            Cesium.Ion.defaultAccessToken = key;
+            tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+          }
+          viewer.scene.primitives.add(tileset);
+          viewer.scene.globe.show = false;
+          photoreal = true;
+        } catch (e) {
+          console.error('No se pudo cargar el 3D fotorrealista:', e);
+          alert('La clave no funcionó (¿está activada la Map Tiles API / es un token válido de ion?). Se carga el modo mapa plano.');
+        }
+      }
+      if (!photoreal) {
+        viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
+          url: 'https://tile.openstreetmap.org/'
+        }));
+      }
+
+      // Avión
+      try {
+        plane = viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+          model: {
+            uri: 'https://raw.githubusercontent.com/CesiumGS/cesium/main/Apps/SampleData/models/CesiumAir/Cesium_Air.glb',
+            minimumPixelSize: 64, maximumScale: 5000, scale: 1.0,
+          },
+        });
+      } catch (e) {
+        plane = viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+          point: { pixelSize: 14, color: Cesium.Color.ORANGERED },
+        });
+      }
+
+      document.getElementById('loadingMsg').style.display = 'none';
+      document.getElementById('hud').style.display = 'block';
+      document.getElementById('controlsBox').style.display = 'block';
+      document.getElementById('title').style.display = 'block';
+
+      let lastTime = performance.now();
+      let groundH = GROUND_FALLBACK;
+      let frame = 0;
+
+      viewer.clock.onTick.addEventListener(() => {
+        const now = performance.now();
+        const dt = Math.min((now - lastTime) / 1000, 0.1);
+        lastTime = now;
+        frame++;
+
+        // ----- Entrada -----
+        const pitchRate = 0.9, rollRate = 1.4;
+        if (keys['w'] || keys['ArrowUp'])    pitch = Math.min(pitch + pitchRate * dt,  Cesium.Math.toRadians(45));
+        if (keys['s'] || keys['ArrowDown'])  pitch = Math.max(pitch - pitchRate * dt, Cesium.Math.toRadians(-45));
+        if (keys['a'] || keys['ArrowLeft'])  roll = Math.max(roll - rollRate * dt, Cesium.Math.toRadians(-60));
+        if (keys['d'] || keys['ArrowRight']) roll = Math.min(roll + rollRate * dt,  Cesium.Math.toRadians(60));
+        if (keys['Shift']) speed = Math.min(speed + 150 * dt, 900);
+        if (keys['Control']) speed = Math.max(speed - 150 * dt, 60);
+
+        // Auto-centrado suave si no se toca nada
+        if (!keys['a'] && !keys['d'] && !keys['ArrowLeft'] && !keys['ArrowRight']) roll *= (1 - 1.5 * dt);
+        if (!keys['w'] && !keys['s'] && !keys['ArrowUp'] && !keys['ArrowDown'])   pitch *= (1 - 0.6 * dt);
+
+        // El alabeo hace girar el rumbo (como un avión real)
+        heading += roll * 0.9 * dt;
+
+        // ----- Movimiento -----
+        const v = speed / 3.6; // m/s
+        const horiz = v * Math.cos(pitch) * dt;
+        const vert  = v * Math.sin(pitch) * dt;
+        const R = 6371000;
+        lat += (horiz * Math.cos(heading)) / R * (180 / Math.PI);
+        lon += (horiz * Math.sin(heading)) / (R * Math.cos(Cesium.Math.toRadians(lat))) * (180 / Math.PI);
+        alt += vert;
+
+        // ----- Suelo -----
+        if (frame % 15 === 0) {
+          try {
+            const h = viewer.scene.sampleHeight(Cesium.Cartographic.fromDegrees(lon, lat));
+            if (h !== undefined && h !== null) groundH = h;
+          } catch (_) {}
+        }
+        const minAlt = Math.max(groundH, 0) + MIN_AGL;
+        if (alt < minAlt) { alt = minAlt; if (pitch < 0) pitch = 0; }
+        if (alt > 15000) alt = 15000;
+
+        // ----- Avión y cámara -----
+        const pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+        const hpr = new Cesium.HeadingPitchRoll(heading, pitch, roll);
+        plane.position = pos;
+        plane.orientation = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+
+        // Cámara de persecución
+        viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(
+          heading, Cesium.Math.toRadians(-12) + pitch * 0.35, 140
+        ));
+
+        // ----- HUD -----
+        if (frame % 6 === 0) {
+          document.getElementById('hudSpeed').textContent = Math.round(speed);
+          document.getElementById('hudAlt').textContent = Math.round(alt);
+          let deg = Math.round(Cesium.Math.toDegrees(heading)) % 360;
+          if (deg < 0) deg += 360;
+          document.getElementById('hudHdg').textContent = deg;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
