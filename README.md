@@ -18,3 +18,6 @@ Simulador de vuelo en el navegador sobre la Comunidad de Madrid, con edificios 3
 | `Shift` / `Ctrl` | Acelerar / frenar |
 | `1`–`5` | Viajar: Sol, Bernabéu, 4 Torres, Retiro, El Escorial |
 | `Espacio` | Nivelar el avión |
+| `Q` | Calidad gráfica (alta / media / rápida) |
+
+Incluye un minimapa en tiempo real (arriba a la derecha) para saber sobre qué zona estás volando.

@@ -6,6 +6,8 @@
   <title>Vuelo sobre Madrid ✈️</title>
   <script src="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Cesium.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #0a0f1e; }
     #cesiumContainer { width: 100%; height: 100%; }
@@ -69,6 +71,25 @@
       background: rgba(8,14,30,0.6); padding: 6px 16px; border-radius: 20px; display: none;
       border: 1px solid rgba(120,170,255,0.2);
     }
+    /* ---------- Minimapa ---------- */
+    #minimapWrap {
+      position: absolute; top: 14px; right: 14px; z-index: 10;
+      width: 220px; height: 220px; display: none;
+      border-radius: 12px; overflow: hidden;
+      border: 2px solid rgba(120,170,255,0.45);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    #minimap { width: 100%; height: 100%; background: #dfe8f0; }
+    #minimapCredit {
+      position: absolute; bottom: 2px; right: 5px; z-index: 500;
+      font-size: 9px; color: #555; pointer-events: none;
+      background: rgba(255,255,255,0.6); padding: 0 3px; border-radius: 3px;
+    }
+    #miniPlane {
+      font-size: 20px; line-height: 20px; text-align: center;
+      color: #e33; text-shadow: 0 0 3px #fff, 0 0 6px #fff;
+      transform-origin: center;
+    }
     #loadingMsg {
       position: absolute; inset: 0; z-index: 15; display: none;
       align-items: center; justify-content: center; color: #cfe0ff; font-size: 18px;
@@ -99,6 +120,7 @@
   </div>
 
   <div id="loadingMsg">Cargando Madrid en 3D... ✈️</div>
+  <div id="minimapWrap"><div id="minimap"></div><div id="minimapCredit">© OpenStreetMap</div></div>
   <div id="title">Comunidad de Madrid — Simulador de vuelo</div>
 
   <div id="hud">
@@ -106,6 +128,7 @@
     <div>⛰️ Altitud: <b id="hudAlt">0</b> m</div>
     <div>🧭 Rumbo: <b id="hudHdg">0</b>°</div>
     <div>📍 <b id="hudZone">Madrid</b></div>
+    <div>🖼️ Calidad: <b id="hudQuality">Alta</b></div>
   </div>
 
   <div id="controlsBox">
@@ -114,7 +137,8 @@
     <kbd>A</kbd>/<kbd>D</kbd> o <kbd>←</kbd>/<kbd>→</kbd> — girar<br>
     <kbd>Shift</kbd> / <kbd>Ctrl</kbd> — acelerar / frenar<br>
     <kbd>1</kbd>-<kbd>5</kbd> — viajar: Sol, Bernabéu, 4 Torres, Retiro, El Escorial<br>
-    <kbd>Espacio</kbd> — nivelar avión
+    <kbd>Espacio</kbd> — nivelar avión<br>
+    <kbd>Q</kbd> — calidad gráfica (alta / media / rápida)
   </div>
 
   <script>
@@ -132,7 +156,26 @@
     const MODEL_ORIENT_FIX = Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(90));
     const GROUND_FALLBACK = 650; // altitud media de Madrid (m)
 
-    let viewer, plane;
+    let viewer, plane, tileset = null, minimap = null, miniMarker = null;
+
+    // Niveles de calidad: sse = detalle de los edificios (menos = mejor),
+    // native = renderizar a la resolución real de la pantalla (más nítido)
+    const QUALITIES = [
+      { name: 'Alta',   sse: 14, native: true },
+      { name: 'Media',  sse: 18, native: false },
+      { name: 'Rápida', sse: 26, native: false },
+    ];
+    let qualityIdx = 0;
+    function applyQuality() {
+      const q = QUALITIES[qualityIdx];
+      if (tileset) tileset.maximumScreenSpaceError = q.sse;
+      if (viewer) viewer.useBrowserRecommendedResolution = !q.native;
+      document.getElementById('hudQuality').textContent = q.name;
+    }
+    function cycleQuality() {
+      qualityIdx = (qualityIdx + 1) % QUALITIES.length;
+      applyQuality();
+    }
     // Estado del avión
     let lon = START.lon, lat = START.lat, alt = START.alt;
     let heading = Cesium.Math.toRadians(0); // norte
@@ -143,6 +186,7 @@
     document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.key] = true;
       if (PLACES[e.key]) teleport(PLACES[e.key]);
       if (e.key === ' ') { pitch = 0; roll = 0; }
+      if (e.key.toLowerCase() === 'q') cycleQuality();
       if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
     });
     document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
@@ -187,7 +231,6 @@
       let photoreal = false;
       if (key) {
         try {
-          let tileset;
           if (key.startsWith('AIza')) {
             // Clave de Google Maps Platform (Map Tiles API)
             try {
@@ -200,8 +243,6 @@
             Cesium.Ion.defaultAccessToken = key;
             tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
           }
-          // Menos detalle lejano = carga mucho más rápida (24 en vez de 16)
-          tileset.maximumScreenSpaceError = 24;
           tileset.dynamicScreenSpaceError = true;
           tileset.skipLevelOfDetail = true;
           viewer.scene.primitives.add(tileset);
@@ -238,6 +279,19 @@
       document.getElementById('hud').style.display = 'block';
       document.getElementById('controlsBox').style.display = 'block';
       document.getElementById('title').style.display = 'block';
+      applyQuality();
+
+      // Minimapa (Leaflet) — sin interacción, solo sigue al avión
+      document.getElementById('minimapWrap').style.display = 'block';
+      minimap = L.map('minimap', {
+        zoomControl: false, attributionControl: false, dragging: false,
+        scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
+        keyboard: false, touchZoom: false,
+      }).setView([lat, lon], 12);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(minimap);
+      miniMarker = L.marker([lat, lon], {
+        icon: L.divIcon({ className: '', html: '<div id="miniPlane">▲</div>', iconSize: [20, 20], iconAnchor: [10, 10] }),
+      }).addTo(minimap);
 
       let lastTime = performance.now();
       let groundH = GROUND_FALLBACK;
@@ -299,6 +353,14 @@
         viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(
           heading, Cesium.Math.toRadians(-12) + pitch * 0.35, 140
         ));
+
+        // ----- Minimapa -----
+        if (minimap && frame % 20 === 0) {
+          minimap.setView([lat, lon], minimap.getZoom(), { animate: false });
+          miniMarker.setLatLng([lat, lon]);
+          const mp = document.getElementById('miniPlane');
+          if (mp) mp.style.transform = 'rotate(' + Math.round(Cesium.Math.toDegrees(heading)) + 'deg)';
+        }
 
         // ----- HUD -----
         if (frame % 6 === 0) {
