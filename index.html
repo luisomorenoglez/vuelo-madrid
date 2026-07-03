@@ -128,6 +128,8 @@
       '5': { name: 'El Escorial',       lon: -4.1477, lat: 40.5892, alt: 2200 },
     };
     const MIN_AGL = 60;        // altura mínima sobre el suelo (m)
+    // El modelo Cesium_Air apunta 90° a un lado; esto lo alinea con el rumbo
+    const MODEL_ORIENT_FIX = Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(90));
     const GROUND_FALLBACK = 650; // altitud media de Madrid (m)
 
     let viewer, plane;
@@ -178,6 +180,10 @@
       viewer.scene.skyAtmosphere.show = true;
       viewer.scene.globe.depthTestAgainstTerrain = true;
 
+      // Más peticiones simultáneas a Google = carga más rápida
+      Cesium.RequestScheduler.requestsByServer['tile.googleapis.com:443'] = 18;
+      Cesium.RequestScheduler.requestsByServer['assets.ion.cesium.com:443'] = 18;
+
       let photoreal = false;
       if (key) {
         try {
@@ -194,6 +200,10 @@
             Cesium.Ion.defaultAccessToken = key;
             tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
           }
+          // Menos detalle lejano = carga mucho más rápida (24 en vez de 16)
+          tileset.maximumScreenSpaceError = 24;
+          tileset.dynamicScreenSpaceError = true;
+          tileset.skipLevelOfDetail = true;
           viewer.scene.primitives.add(tileset);
           viewer.scene.globe.show = false;
           photoreal = true;
@@ -267,8 +277,10 @@
         // ----- Suelo -----
         if (frame % 15 === 0) {
           try {
-            const h = viewer.scene.sampleHeight(Cesium.Cartographic.fromDegrees(lon, lat));
-            if (h !== undefined && h !== null) groundH = h;
+            // Excluir el avión de la medición: si no, el juego cree que el
+            // "suelo" es el propio avión y no deja bajar el morro
+            const h = viewer.scene.sampleHeight(Cesium.Cartographic.fromDegrees(lon, lat), [plane]);
+            if (h !== undefined && h !== null && h < alt) groundH = h;
           } catch (_) {}
         }
         const minAlt = Math.max(groundH, 0) + MIN_AGL;
@@ -279,7 +291,9 @@
         const pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
         const hpr = new Cesium.HeadingPitchRoll(heading, pitch, roll);
         plane.position = pos;
-        plane.orientation = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+        // El modelo del avión viene girado 90°: se corrige para verlo desde atrás
+        const q = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+        plane.orientation = Cesium.Quaternion.multiply(q, MODEL_ORIENT_FIX, new Cesium.Quaternion());
 
         // Cámara de persecución
         viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(
