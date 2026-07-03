@@ -44,6 +44,25 @@
     .hint { font-size: 12px; color: #7e93bb; margin-top: 14px; line-height: 1.6; text-align: left; }
     .hint a { color: #4da3ff; }
     #keyError { color: #ff7b7b; font-size: 13px; min-height: 18px; margin: 0 0 6px; }
+    .planes { display: flex; gap: 8px; margin-bottom: 14px; }
+    .plane-opt {
+      flex: 1; padding: 10px 4px; border-radius: 10px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3);
+      color: #cdd9f0; font-size: 13px; transition: all .15s;
+    }
+    .plane-opt.selected { border-color: #4da3ff; background: rgba(47,124,246,0.3); color: #fff; }
+    .plane-opt small { display: block; font-size: 10px; color: #8fa5cc; margin-top: 2px; }
+
+    /* ---------- Choque ---------- */
+    #crashOverlay {
+      position: absolute; inset: 0; z-index: 18; display: none;
+      align-items: center; justify-content: center; flex-direction: column;
+      background: radial-gradient(ellipse at center, rgba(255,90,0,0.5), rgba(110,0,0,0.8));
+      color: #fff; text-align: center; animation: crashFlash 0.5s;
+    }
+    #crashOverlay h2 { font-size: 44px; margin: 0 0 10px; text-shadow: 0 2px 14px #000; }
+    #crashOverlay p { font-size: 17px; margin: 0; color: #ffd9c4; }
+    @keyframes crashFlash { 0% { background: #fff; } }
 
     /* ---------- HUD ---------- */
     #hud {
@@ -105,6 +124,11 @@
       <h1>✈️ Vuelo sobre Madrid</h1>
       <p class="sub">Pilota un avión sobre la Comunidad de Madrid en 3D fotorrealista</p>
       <p id="keyError"></p>
+      <div class="planes">
+        <button class="plane-opt selected" id="opt-avioneta" onclick="selectPlane('avioneta')">🛩️ Avioneta<small>equilibrada</small></button>
+        <button class="plane-opt" id="opt-dron" onclick="selectPlane('dron')">🚁 Dron<small>ágil y lento</small></button>
+        <button class="plane-opt" id="opt-globo" onclick="selectPlane('globo')">🎈 Globo<small>turismo</small></button>
+      </div>
       <input id="apiKey" type="text" placeholder="Pega aquí tu clave (Google Maps o Cesium ion)" autocomplete="off" />
       <button class="btn btn-primary" onclick="startWithKey()">🌍 Volar en 3D fotorrealista</button>
       <button class="btn btn-secondary" onclick="startDemo()">Probar sin clave (mapa plano)</button>
@@ -121,6 +145,7 @@
 
   <div id="loadingMsg">Cargando Madrid en 3D... ✈️</div>
   <div id="minimapWrap"><div id="minimap"></div><div id="minimapCredit">© OpenStreetMap</div></div>
+  <div id="crashOverlay"><h2>💥 ¡Te has estrellado!</h2><p>Volviendo al aire en unos segundos...</p></div>
   <div id="title">Comunidad de Madrid — Simulador de vuelo</div>
 
   <div id="hud">
@@ -129,6 +154,7 @@
     <div>🧭 Rumbo: <b id="hudHdg">0</b>°</div>
     <div>📍 <b id="hudZone">Madrid</b></div>
     <div>🖼️ Calidad: <b id="hudQuality">Alta</b></div>
+    <div>🕐 Hora: <b id="hudTime">Mediodía</b></div>
   </div>
 
   <div id="controlsBox">
@@ -138,7 +164,11 @@
     <kbd>Shift</kbd> / <kbd>Ctrl</kbd> — acelerar / frenar<br>
     <kbd>1</kbd>-<kbd>5</kbd> — viajar: Sol, Bernabéu, 4 Torres, Retiro, El Escorial<br>
     <kbd>Espacio</kbd> — nivelar avión<br>
-    <kbd>Q</kbd> — calidad gráfica (alta / media / rápida)
+    <kbd>Q</kbd> — calidad gráfica (alta / media / rápida)<br>
+    <kbd>C</kbd> — vista cabina / exterior<br>
+    <kbd>N</kbd> — hora del día<br>
+    <kbd>R</kbd> — volver al punto de inicio<br>
+    ⚠️ ¡Cuidado! Ahora sí puedes estrellarte
   </div>
 
   <script>
@@ -156,7 +186,41 @@
     const MODEL_ORIENT_FIX = Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(90));
     const GROUND_FALLBACK = 650; // altitud media de Madrid (m)
 
-    let viewer, plane, tileset = null, minimap = null, miniMarker = null;
+    // Aeronaves disponibles y su física
+    const MODELS = 'https://raw.githubusercontent.com/CesiumGS/cesium/main/Apps/SampleData/models/';
+    const AIRCRAFT = {
+      avioneta: { uri: MODELS + 'CesiumAir/Cesium_Air.glb',       scale: 1,   cruise: 220, min: 60, max: 900, accel: 150, pitchRate: 0.9, rollRate: 1.4, camDist: 140 },
+      dron:     { uri: MODELS + 'CesiumDrone/CesiumDrone.glb',    scale: 4,   cruise: 100, min: 20, max: 350, accel: 220, pitchRate: 1.8, rollRate: 2.6, camDist: 55 },
+      globo:    { uri: MODELS + 'CesiumBalloon/CesiumBalloon.glb', scale: 1,  cruise: 60,  min: 15, max: 140, accel: 50,  pitchRate: 0.5, rollRate: 0.8, camDist: 150 },
+    };
+    let selectedPlane = 'avioneta';
+    let AC = AIRCRAFT.avioneta;
+    function selectPlane(k) {
+      selectedPlane = k;
+      document.querySelectorAll('.plane-opt').forEach(b => b.classList.remove('selected'));
+      document.getElementById('opt-' + k).classList.add('selected');
+    }
+
+    // Horas del día (hora local de Madrid en verano = UTC+2)
+    const TIMES = [
+      { name: 'Mediodía',  iso: '2026-07-03T10:00:00Z' },
+      { name: 'Atardecer', iso: '2026-07-03T19:45:00Z' },
+      { name: 'Noche',     iso: '2026-07-03T22:30:00Z' },
+      { name: 'Amanecer',  iso: '2026-07-03T05:00:00Z' },
+    ];
+    let timeIdx = 0;
+    function applyTime() {
+      viewer.clock.currentTime = Cesium.JulianDate.fromIso8601(TIMES[timeIdx].iso);
+      document.getElementById('hudTime').textContent = TIMES[timeIdx].name;
+    }
+    function cycleTime() { timeIdx = (timeIdx + 1) % TIMES.length; applyTime(); }
+
+    let viewer, plane, tileset = null, minimap = null, miniMarker = null, miniTrail = null;
+    let viewMode = 'chase';   // 'chase' (exterior) | 'cockpit' (cabina)
+    let crashed = false;
+    let graceUntil = 0;       // invulnerable hasta este instante tras aparecer
+    let trailPositions = [];  // estela 3D
+    let lastSpawn = { name: 'Madrid', lon: START.lon, lat: START.lat, alt: START.alt };
 
     // Niveles de calidad: sse = detalle de los edificios (menos = mejor),
     // native = renderizar a la resolución real de la pantalla (más nítido)
@@ -187,13 +251,31 @@
       if (PLACES[e.key]) teleport(PLACES[e.key]);
       if (e.key === ' ') { pitch = 0; roll = 0; }
       if (e.key.toLowerCase() === 'q') cycleQuality();
+      if (e.key.toLowerCase() === 'c') viewMode = (viewMode === 'chase') ? 'cockpit' : 'chase';
+      if (e.key.toLowerCase() === 'n' && viewer) cycleTime();
+      if (e.key.toLowerCase() === 'r' && !crashed) teleport(lastSpawn);
       if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
     });
     document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
 
     function teleport(p) {
       lon = p.lon; lat = p.lat; alt = p.alt; pitch = 0; roll = 0;
-      document.getElementById('hudZone').textContent = p.name;
+      lastSpawn = p;
+      trailPositions.length = 0;
+      if (miniTrail) miniTrail.setLatLngs([]);
+      graceUntil = performance.now() + 2500;
+      document.getElementById('hudZone').textContent = p.name || 'Madrid';
+    }
+
+    function doCrash() {
+      crashed = true;
+      document.getElementById('crashOverlay').style.display = 'flex';
+      setTimeout(() => {
+        teleport(lastSpawn);
+        speed = AC.cruise;
+        crashed = false;
+        document.getElementById('crashOverlay').style.display = 'none';
+      }, 2800);
     }
 
     // ================== ARRANQUE ==================
@@ -223,6 +305,10 @@
       });
       viewer.scene.skyAtmosphere.show = true;
       viewer.scene.globe.depthTestAgainstTerrain = true;
+      viewer.scene.globe.enableLighting = true; // día/noche según el sol
+
+      AC = AIRCRAFT[selectedPlane];
+      speed = AC.cruise;
 
       // Más peticiones simultáneas a Google = carga más rápida
       Cesium.RequestScheduler.requestsByServer['tile.googleapis.com:443'] = 18;
@@ -259,13 +345,13 @@
         }));
       }
 
-      // Avión
+      // Aeronave elegida
       try {
         plane = viewer.entities.add({
           position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
           model: {
-            uri: 'https://raw.githubusercontent.com/CesiumGS/cesium/main/Apps/SampleData/models/CesiumAir/Cesium_Air.glb',
-            minimumPixelSize: 64, maximumScale: 5000, scale: 1.0,
+            uri: AC.uri,
+            minimumPixelSize: 64, maximumScale: 5000, scale: AC.scale,
           },
         });
       } catch (e) {
@@ -275,11 +361,26 @@
         });
       }
 
+      // Estela 3D luminosa
+      trailPositions = [];
+      viewer.entities.add({
+        polyline: {
+          positions: new Cesium.CallbackProperty(() => trailPositions, false),
+          width: 4,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            glowPower: 0.25, color: Cesium.Color.CYAN.withAlpha(0.7),
+          }),
+          arcType: Cesium.ArcType.NONE,
+        },
+      });
+
       document.getElementById('loadingMsg').style.display = 'none';
       document.getElementById('hud').style.display = 'block';
       document.getElementById('controlsBox').style.display = 'block';
       document.getElementById('title').style.display = 'block';
       applyQuality();
+      applyTime();
+      graceUntil = performance.now() + 2500;
 
       // Minimapa (Leaflet) — sin interacción, solo sigue al avión
       document.getElementById('minimapWrap').style.display = 'block';
@@ -292,6 +393,7 @@
       miniMarker = L.marker([lat, lon], {
         icon: L.divIcon({ className: '', html: '<div id="miniPlane">▲</div>', iconSize: [20, 20], iconAnchor: [10, 10] }),
       }).addTo(minimap);
+      miniTrail = L.polyline([], { color: '#e33', weight: 2, opacity: 0.75 }).addTo(minimap);
 
       let lastTime = performance.now();
       let groundH = GROUND_FALLBACK;
@@ -301,16 +403,16 @@
         const now = performance.now();
         const dt = Math.min((now - lastTime) / 1000, 0.1);
         lastTime = now;
+        if (crashed) return;
         frame++;
 
         // ----- Entrada -----
-        const pitchRate = 0.9, rollRate = 1.4;
-        if (keys['w'] || keys['ArrowUp'])    pitch = Math.min(pitch + pitchRate * dt,  Cesium.Math.toRadians(45));
-        if (keys['s'] || keys['ArrowDown'])  pitch = Math.max(pitch - pitchRate * dt, Cesium.Math.toRadians(-45));
-        if (keys['a'] || keys['ArrowLeft'])  roll = Math.max(roll - rollRate * dt, Cesium.Math.toRadians(-60));
-        if (keys['d'] || keys['ArrowRight']) roll = Math.min(roll + rollRate * dt,  Cesium.Math.toRadians(60));
-        if (keys['Shift']) speed = Math.min(speed + 150 * dt, 900);
-        if (keys['Control']) speed = Math.max(speed - 150 * dt, 60);
+        if (keys['w'] || keys['ArrowUp'])    pitch = Math.min(pitch + AC.pitchRate * dt,  Cesium.Math.toRadians(45));
+        if (keys['s'] || keys['ArrowDown'])  pitch = Math.max(pitch - AC.pitchRate * dt, Cesium.Math.toRadians(-45));
+        if (keys['a'] || keys['ArrowLeft'])  roll = Math.max(roll - AC.rollRate * dt, Cesium.Math.toRadians(-60));
+        if (keys['d'] || keys['ArrowRight']) roll = Math.min(roll + AC.rollRate * dt,  Cesium.Math.toRadians(60));
+        if (keys['Shift']) speed = Math.min(speed + AC.accel * dt, AC.max);
+        if (keys['Control']) speed = Math.max(speed - AC.accel * dt, AC.min);
 
         // Auto-centrado suave si no se toca nada
         if (!keys['a'] && !keys['d'] && !keys['ArrowLeft'] && !keys['ArrowRight']) roll *= (1 - 1.5 * dt);
@@ -337,9 +439,13 @@
             if (h !== undefined && h !== null && h < alt) groundH = h;
           } catch (_) {}
         }
-        const minAlt = Math.max(groundH, 0) + MIN_AGL;
-        if (alt < minAlt) { alt = minAlt; if (pitch < 0) pitch = 0; }
         if (alt > 15000) alt = 15000;
+
+        // ----- Colisión real (con 2,5 s de invulnerabilidad tras aparecer) -----
+        if (now > graceUntil && alt <= Math.max(groundH, 0) + 4) {
+          doCrash();
+          return;
+        }
 
         // ----- Avión y cámara -----
         const pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
@@ -349,10 +455,23 @@
         const q = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
         plane.orientation = Cesium.Quaternion.multiply(q, MODEL_ORIENT_FIX, new Cesium.Quaternion());
 
-        // Cámara de persecución
-        viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(
-          heading, Cesium.Math.toRadians(-12) + pitch * 0.35, 140
-        ));
+        // Estela 3D (un punto cada pocos frames, máximo ~400)
+        if (frame % 8 === 0) {
+          trailPositions.push(pos);
+          if (trailPositions.length > 400) trailPositions.shift();
+        }
+
+        // Cámara: cabina o persecución
+        if (viewMode === 'cockpit') {
+          plane.show = false;
+          viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+          viewer.camera.setView({ destination: pos, orientation: { heading, pitch, roll } });
+        } else {
+          plane.show = true;
+          viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(
+            heading, Cesium.Math.toRadians(-12) + pitch * 0.35, AC.camDist
+          ));
+        }
 
         // ----- Minimapa -----
         if (minimap && frame % 20 === 0) {
@@ -360,6 +479,9 @@
           miniMarker.setLatLng([lat, lon]);
           const mp = document.getElementById('miniPlane');
           if (mp) mp.style.transform = 'rotate(' + Math.round(Cesium.Math.toDegrees(heading)) + 'deg)';
+          miniTrail.addLatLng([lat, lon]);
+          const pts = miniTrail.getLatLngs();
+          if (pts.length > 600) { pts.shift(); miniTrail.setLatLngs(pts); }
         }
 
         // ----- HUD -----
